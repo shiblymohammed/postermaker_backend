@@ -1,0 +1,83 @@
+HOW TO UPDATE CORS AFTER DEPLOYING FRONTENDS
+=============================================
+
+After deploying your user-site and admin-panel to Vercel, you MUST update the backend CORS settings.
+
+STEP-BY-STEP GUIDE
+------------------
+
+1. Deploy User Site to Vercel
+   - You'll get a URL like: https://lapoaitools-user.vercel.app
+   - Or custom domain: https://poster.lapoelectioncart.com
+
+2. Deploy Admin Panel to Vercel
+   - You'll get a URL like: https://lapoaitools-admin.vercel.app
+   - Or custom domain: https://admin-poster.lapoelectioncart.com
+
+3. Update Backend CORS on Render
+   a. Go to: https://dashboard.render.com
+   b. Click on your backend service
+   c. Go to "Environment" tab
+   d. Find "CORS_ALLOWED_ORIGINS"
+   e. Update the value to include BOTH URLs:
+      
+      https://poster.lapoelectioncart.com,https://admin-poster.lapoelectioncart.com
+      
+      OR if using Vercel default URLs:
+      
+      https://lapoaitools-user.vercel.app,https://lapoaitools-admin.vercel.app
+
+   f. Click "Save Changes"
+   g. Backend will automatically redeploy
+
+IMPORTANT NOTES
+---------------
+- NO SPACES between URLs (use comma only)
+- Include https:// prefix
+- Don't add trailing slashes
+- Both user site AND admin panel must be listed
+- Backend will redeploy automatically (takes ~2 minutes)
+
+EXAMPLE CORS VALUES
+-------------------
+
+Development (Local):
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174
+
+Production (Vercel Default):
+CORS_ALLOWED_ORIGINS=https://lapoaitools-user.vercel.app,https://lapoaitools-admin.vercel.app
+
+Production (Custom Domains):
+CORS_ALLOWED_ORIGINS=https://poster.lapoelectioncart.com,https://admin-poster.lapoelectioncart.com
+
+Mixed (Vercel + Custom):
+CORS_ALLOWED_ORIGINS=https://poster.lapoelectioncart.com,https://lapoaitools-admin.vercel.app
+
+TESTING AFTER UPDATE
+--------------------
+1. Wait for backend to finish redeploying (~2 minutes)
+2. Open user site in browser
+3. Try to load a campaign page
+4. Check browser console for CORS errors
+5. If no errors, CORS is configured correctly!
+
+TROUBLESHOOTING
+---------------
+Issue: CORS errors in browser console
+Fix: Double-check CORS_ALLOWED_ORIGINS has correct URLs
+
+Issue: "Access-Control-Allow-Origin" error
+Fix: Make sure URLs match exactly (check https vs http)
+
+Issue: Still getting errors after update
+Fix: Clear browser cache and hard refresh (Ctrl+Shift+R)
+
+CURRENT CONFIGURATION
+---------------------
+Based on your .env.production file:
+
+User Site: https://poster.lapoelectioncart.com
+Admin Panel: https://admin-poster.lapoelectioncart.com
+
+These are already configured in your .env.production file!
+Just make sure to add them to Render after deployment.

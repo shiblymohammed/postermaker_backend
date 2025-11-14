@@ -1,0 +1,103 @@
+FIX 400 BAD REQUEST ERROR ON RENDER
+====================================
+
+PROBLEM
+-------
+Getting 400 Bad Request when accessing:
+- https://postermaker-backend.onrender.com/admin
+- https://postermaker-backend.onrender.com/api/...
+
+CAUSE
+-----
+Django's ALLOWED_HOSTS setting doesn't include your Render domain.
+
+SOLUTION - UPDATE RENDER ENVIRONMENT VARIABLES
+-----------------------------------------------
+
+1. Go to: https://dashboard.render.com
+2. Click on your backend service: "postermaker-backend"
+3. Click "Environment" tab on the left
+4. Find or add these variables:
+
+   ALLOWED_HOSTS
+   Value: postermaker-backend.onrender.com
+
+   CORS_ALLOWED_ORIGINS
+   Value: https://poster.lapoelectioncart.com,https://posteradmin.lapoelectioncart.com
+
+5. Click "Save Changes"
+6. Wait for automatic redeploy (~2-3 minutes)
+
+VERIFY THE FIX
+--------------
+After redeploy completes:
+
+1. Visit: https://postermaker-backend.onrender.com/admin
+   - Should show Django admin login page (not 400 error)
+
+2. Test API endpoint: https://postermaker-backend.onrender.com/api/admin/login/
+   - Should return JSON error (not 400)
+
+3. Test from admin panel: https://posteradmin.lapoelectioncart.com
+   - Login should work
+
+ADMIN PANEL LOGIN FIX
+---------------------
+If admin panel login still doesn't work after fixing 400 error:
+
+1. Check admin panel environment variable:
+   - Go to Vercel dashboard
+   - Click on posteradmin project
+   - Settings → Environment Variables
+   - Verify: VITE_API_URL = https://postermaker-backend.onrender.com
+
+2. If wrong or missing, add/update it and redeploy
+
+3. Check browser console for errors:
+   - Open https://posteradmin.lapoelectioncart.com
+   - Press F12 → Console tab
+   - Try to login
+   - Look for error messages
+
+COMMON ISSUES
+-------------
+
+Issue: Still getting 400 after update
+Fix: Wait for redeploy to complete, clear browser cache
+
+Issue: CORS error instead of 400
+Fix: Good! 400 is fixed. Now update CORS_ALLOWED_ORIGINS
+
+Issue: Login button does nothing
+Fix: Check browser console for JavaScript errors
+
+Issue: "Network Error" on login
+Fix: Verify VITE_API_URL in Vercel is correct
+
+QUICK TEST COMMANDS
+-------------------
+Test if backend is accessible:
+
+curl https://postermaker-backend.onrender.com/api/admin/login/
+
+Should return:
+{"error": "Invalid credentials"} or similar JSON
+
+Should NOT return:
+400 Bad Request or HTML error page
+
+CURRENT CONFIGURATION
+---------------------
+Backend URL: https://postermaker-backend.onrender.com
+User Site: https://poster.lapoelectioncart.com
+Admin Panel: https://posteradmin.lapoelectioncart.com
+
+Required Environment Variables on Render:
+- ALLOWED_HOSTS=postermaker-backend.onrender.com
+- CORS_ALLOWED_ORIGINS=https://poster.lapoelectioncart.com,https://posteradmin.lapoelectioncart.com
+- DEBUG=False
+- SECRET_KEY=<your-secret-key>
+- DATABASE_URL=<auto-populated-by-render>
+- CLOUDINARY_CLOUD_NAME=dtbkompng
+- CLOUDINARY_API_KEY=248122589596546
+- CLOUDINARY_API_SECRET=WTtX3k4hdI1tY-_PCMYbt7pI9lw
