@@ -171,6 +171,12 @@ CORS_ALLOWED_ORIGINS = config(
     default='http://localhost:5173,http://localhost:5174'
 ).split(',')
 
+# CSRF Trusted Origins (required for Django admin and POST requests in production)
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='http://localhost:5173,http://localhost:5174'
+).split(',')
+
 # Security settings for production
 if not DEBUG:
     SECURE_SSL_REDIRECT = True
