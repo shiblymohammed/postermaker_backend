@@ -1,0 +1,77 @@
+RENDER DEPLOYMENT CHECKLIST
+===========================
+
+PRE-DEPLOYMENT
+--------------
+[ ] Cloudinary account created
+[ ] Cloudinary credentials ready (Cloud Name, API Key, API Secret)
+[ ] GitHub account ready
+[ ] Render account created
+
+GITHUB SETUP
+------------
+[ ] Create repository: lapoaitools-backend
+[ ] Push code to GitHub:
+    cd backend
+    git init
+    git add .
+    git commit -m "Initial commit"
+    git branch -M main
+    git remote add origin https://github.com/YOUR_USERNAME/lapoaitools-backend.git
+    git push -u origin main
+
+RENDER WEB SERVICE
+------------------
+[ ] New Web Service created
+[ ] GitHub repository connected
+[ ] Build Command: ./build.sh
+[ ] Start Command: gunicorn config.wsgi:application
+[ ] Environment Variables added:
+    [ ] SECRET_KEY (generated)
+    [ ] DEBUG = False
+    [ ] ALLOWED_HOSTS = your-app.onrender.com
+    [ ] CORS_ALLOWED_ORIGINS = https://frontend.com,https://admin.com
+    [ ] CLOUDINARY_CLOUD_NAME
+    [ ] CLOUDINARY_API_KEY
+    [ ] CLOUDINARY_API_SECRET
+
+RENDER DATABASE
+---------------
+[ ] PostgreSQL database created
+[ ] DATABASE_URL copied
+[ ] DATABASE_URL added to Web Service environment
+
+VERIFICATION
+------------
+[ ] Build completed successfully
+[ ] Logs show: "Superuser 'aseeb' created"
+[ ] Logs show: "Cloudinary storage enabled"
+[ ] API accessible: https://your-app.onrender.com/api/admin/login/
+[ ] Login works with: aseeb / Dr.aseeb123
+
+FRONTEND INTEGRATION
+--------------------
+[ ] Frontend .env updated with backend URL
+[ ] CORS_ALLOWED_ORIGINS includes frontend URLs
+[ ] Test API calls from frontend
+
+POST-DEPLOYMENT
+---------------
+[ ] Monitor logs for errors
+[ ] Test image upload
+[ ] Test campaign creation
+[ ] Test image generation
+[ ] Verify images stored in Cloudinary
+
+NOTES
+-----
+- First request may take 30s (free tier cold start)
+- Database free for 90 days, then $7/month
+- Cloudinary free tier: 25GB storage, 25GB bandwidth
+- Auto-deploys on git push to main branch
+
+ADMIN CREDENTIALS
+-----------------
+Username: aseeb
+Password: Dr.aseeb123
+(Change after first login!)

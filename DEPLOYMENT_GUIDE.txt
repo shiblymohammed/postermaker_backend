@@ -1,0 +1,184 @@
+RENDER DEPLOYMENT GUIDE - LAPOAITOOLS BACKEND
+==============================================
+
+PREREQUISITES
+-------------
+1. GitHub account
+2. Render account (https://render.com)
+3. Cloudinary account (https://cloudinary.com)
+
+STEP 1: PREPARE CLOUDINARY
+---------------------------
+1. Go to https://cloudinary.com/console
+2. Copy your credentials:
+   - Cloud Name
+   - API Key
+   - API Secret
+3. Keep these ready for Render configuration
+
+STEP 2: CREATE GITHUB REPOSITORY
+---------------------------------
+1. Create new repository: lapoaitools-backend
+2. Initialize and push code:
+
+   cd backend
+   git init
+   git add .
+   git commit -m "Initial commit"
+   git branch -M main
+   git remote add origin https://github.com/YOUR_USERNAME/lapoaitools-backend.git
+   git push -u origin main
+
+STEP 3: DEPLOY TO RENDER
+-------------------------
+1. Go to https://dashboard.render.com
+2. Click "New +" → "Web Service"
+3. Connect your GitHub repository
+4. Configure:
+
+   Name: lapoaitools-backend
+   Region: Choose closest to your users
+   Branch: main
+   Runtime: Python 3
+   Build Command: ./build.sh
+   Start Command: gunicorn config.wsgi:application
+
+5. Click "Advanced" and add Environment Variables:
+
+   SECRET_KEY = [Click "Generate" button]
+   DEBUG = False
+   ALLOWED_HOSTS = your-app-name.onrender.com
+   CORS_ALLOWED_ORIGINS = https://your-frontend.com,https://your-admin.com
+   CLOUDINARY_CLOUD_NAME = your_cloud_name
+   CLOUDINARY_API_KEY = your_api_key
+   CLOUDINARY_API_SECRET = your_api_secret
+
+6. Select Plan: Free (or paid for better performance)
+7. Click "Create Web Service"
+
+STEP 4: CREATE DATABASE
+------------------------
+1. In Render Dashboard, click "New +" → "PostgreSQL"
+2. Configure:
+   Name: lapoaitools-db
+   Database: lapoaitools
+   User: lapoaitools
+   Region: Same as web service
+   Plan: Free
+
+3. Click "Create Database"
+4. Copy the "Internal Database URL"
+5. Go back to your Web Service → Environment
+6. Add variable:
+   DATABASE_URL = [paste Internal Database URL]
+
+STEP 5: VERIFY DEPLOYMENT
+--------------------------
+1. Wait for build to complete (5-10 minutes)
+2. Check logs for:
+   ✓ Superuser "aseeb" created successfully
+   ✓ Cloudinary storage enabled
+
+3. Test API:
+   https://your-app-name.onrender.com/api/admin/login/
+
+4. Login credentials:
+   Username: aseeb
+   Password: Dr.aseeb123
+
+STEP 6: UPDATE FRONTEND URLS
+-----------------------------
+Update your frontend .env files with:
+VITE_API_URL=https://your-app-name.onrender.com
+
+IMPORTANT NOTES
+---------------
+✓ Superuser is auto-created on first deployment
+✓ All images stored in Cloudinary (not on Render)
+✓ Database is PostgreSQL (not SQLite)
+✓ SSL/HTTPS enabled automatically
+✓ Free tier sleeps after 15 min inactivity (first request takes ~30s)
+
+TROUBLESHOOTING
+---------------
+Build fails:
+- Check build.sh has execute permissions
+- Verify all environment variables are set
+- Check logs for specific error
+
+Database connection error:
+- Verify DATABASE_URL is set correctly
+- Ensure database and web service in same region
+
+Images not uploading:
+- Verify Cloudinary credentials
+- Check CLOUDINARY_CLOUD_NAME is correct
+
+CORS errors:
+- Add frontend URLs to CORS_ALLOWED_ORIGINS
+- Format: https://url1.com,https://url2.com (no spaces)
+
+UPDATING DEPLOYMENT
+-------------------
+1. Make changes to code
+2. Commit and push to GitHub:
+   git add .
+   git commit -m "Update message"
+   git push
+
+3. Render auto-deploys on push to main branch
+
+CUSTOM DOMAIN (Optional)
+-------------------------
+1. In Render Dashboard → Settings → Custom Domain
+2. Add your domain
+3. Update DNS records as instructed
+4. Update ALLOWED_HOSTS and CORS_ALLOWED_ORIGINS
+
+MONITORING
+----------
+- Logs: Render Dashboard → Logs tab
+- Metrics: Render Dashboard → Metrics tab
+- Database: Render Dashboard → PostgreSQL service
+
+COSTS (as of 2024)
+------------------
+Free Tier:
+- Web Service: Free (sleeps after 15 min)
+- PostgreSQL: Free (90 days, then $7/month)
+- Cloudinary: Free (25GB storage, 25GB bandwidth)
+
+Paid Tier (Recommended for production):
+- Web Service: $7/month (always on)
+- PostgreSQL: $7/month
+- Total: $14/month
+
+SECURITY CHECKLIST
+------------------
+✓ DEBUG=False in production
+✓ SECRET_KEY is randomly generated
+✓ ALLOWED_HOSTS configured
+✓ CORS_ALLOWED_ORIGINS restricted
+✓ SSL/HTTPS enabled
+✓ Database credentials secure
+✓ Cloudinary credentials in environment variables
+
+BACKUP STRATEGY
+---------------
+- Database: Render auto-backups (paid plans)
+- Images: Cloudinary has built-in redundancy
+- Code: GitHub repository
+
+NEXT STEPS
+----------
+1. Deploy user-site frontend
+2. Deploy admin-panel frontend
+3. Update CORS_ALLOWED_ORIGINS with frontend URLs
+4. Test complete flow
+5. Monitor logs for any issues
+
+SUPPORT
+-------
+Render: https://render.com/docs
+Django: https://docs.djangoproject.com
+Cloudinary: https://cloudinary.com/documentation
