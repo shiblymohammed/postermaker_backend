@@ -2,7 +2,8 @@ from django.urls import path
 from .views import (
     AdminLoginView, CampaignCreateView, CampaignListView, CampaignManageView,
     CampaignDetailView, CampaignBySlugView, GenerateImageView,
-    CampaignFramesView, CampaignFrameManageView, CampaignFrameDetailView
+    CampaignFramesView, CampaignFrameManageView, CampaignFrameDetailView,
+    CloudinaryStatusView
 )
 
 urlpatterns = [
@@ -25,4 +26,7 @@ urlpatterns = [
     
     # Image generation
     path('generate/', GenerateImageView.as_view(), name='generate-image'),
+    
+    # Diagnostic endpoint
+    path('cloudinary-status/', CloudinaryStatusView.as_view(), name='cloudinary-status'),
 ]

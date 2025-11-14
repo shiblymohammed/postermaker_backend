@@ -749,3 +749,47 @@ class CampaignFrameDetailView(APIView):
         return Response({
             'message': 'Frame deleted successfully'
         }, status=status.HTTP_200_OK)
+
+
+
+class CloudinaryStatusView(APIView):
+    """
+    Diagnostic endpoint to check Cloudinary configuration
+    GET /api/cloudinary-status/
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        cloudinary_enabled = False
+        cloudinary_config = {}
+        
+        # Check if Cloudinary is configured
+        if hasattr(settings, 'CLOUDINARY_STORAGE'):
+            cloudinary_config = {
+                'cloud_name': settings.CLOUDINARY_STORAGE.get('CLOUD_NAME', 'NOT SET'),
+                'api_key_set': bool(settings.CLOUDINARY_STORAGE.get('API_KEY')),
+                'api_secret_set': bool(settings.CLOUDINARY_STORAGE.get('API_SECRET')),
+            }
+            
+            if hasattr(settings, 'DEFAULT_FILE_STORAGE'):
+                cloudinary_enabled = 'cloudinary' in settings.DEFAULT_FILE_STORAGE
+        
+        # Get sample frame URLs
+        sample_frames = []
+        frames = CampaignFrame.objects.all()[:3]
+        for frame in frames:
+            if frame.frame_image:
+                sample_frames.append({
+                    'name': frame.name,
+                    'campaign': frame.campaign.name,
+                    'url': frame.frame_image.url,
+                    'is_cloudinary': 'cloudinary.com' in frame.frame_image.url
+                })
+        
+        return Response({
+            'cloudinary_enabled': cloudinary_enabled,
+            'cloudinary_config': cloudinary_config,
+            'default_file_storage': getattr(settings, 'DEFAULT_FILE_STORAGE', 'NOT SET'),
+            'sample_frames': sample_frames,
+            'total_frames': CampaignFrame.objects.count()
+        })
