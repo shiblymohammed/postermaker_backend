@@ -90,15 +90,14 @@ class CampaignCreateView(APIView):
             # Generate unique code
             unique_code = Campaign.generate_unique_code()
             
-            # Create campaign instance
+            # Create campaign instance (without frame_image for now)
             campaign = Campaign(
                 name=name,
-                code=unique_code,
-                frame_image=frame_file  # Keep for backward compatibility
+                code=unique_code
             )
             campaign.save()
             
-            # Create default frame
+            # Create default frame with the uploaded file
             CampaignFrame.objects.create(
                 campaign=campaign,
                 frame_image=frame_file,
