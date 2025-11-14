@@ -1,4 +1,5 @@
 import os
+import uuid
 from django.conf import settings
 from django.db import models
 from rest_framework import status
@@ -8,7 +9,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import LoginSerializer, UserSerializer, CampaignSerializer, CampaignFrameSerializer, GeneratedImageSerializer
 from .models import Campaign, CampaignFrame, GeneratedImage
-from .utils import overlay_frame_on_photo, process_base64_image
+from .utils import overlay_frame_on_photo, process_base64_image, download_image_from_url
 
 
 class AdminLoginView(APIView):
@@ -477,14 +478,20 @@ class GenerateImageView(APIView):
                         'error': f'Invalid image data: {str(e)}'
                     }, status=status.HTTP_400_BAD_REQUEST)
                 
-                # Get frame path
-                frame_path = frame.frame_image.path if frame else campaign.frame_image.path
+                # Get frame path or URL
+                frame_image = frame.frame_image if frame else campaign.frame_image
+                
+                # Check if using Cloudinary (URL) or local storage (path)
+                if 'cloudinary.com' in frame_image.url:
+                    frame_path_or_url = frame_image.url
+                else:
+                    frame_path_or_url = frame_image.path
                 
                 # Process image directly (no need to save user photo)
                 try:
-                    generated_image_relative_path = overlay_frame_on_photo(
+                    generated_result = overlay_frame_on_photo(
                         user_image, 
-                        frame_path, 
+                        frame_path_or_url, 
                         output_size
                     )
                 except ValueError as e:
@@ -496,9 +503,21 @@ class GenerateImageView(APIView):
                 generated_image = GeneratedImage(
                     campaign=campaign,
                     frame=frame,
-                    output_size=output_size,
-                    generated_image=generated_image_relative_path
+                    output_size=output_size
                 )
+                
+                # Save the generated image (handles both Cloudinary ContentFile and local path)
+                if hasattr(generated_result, 'read'):
+                    # It's a ContentFile (Cloudinary)
+                    generated_image.generated_image.save(
+                        f"{uuid.uuid4().hex}.png",
+                        generated_result,
+                        save=False
+                    )
+                else:
+                    # It's a path string (local storage)
+                    generated_image.generated_image = generated_result
+                
                 generated_image.save()
                 
             else:
@@ -511,15 +530,25 @@ class GenerateImageView(APIView):
                 )
                 generated_image.save()
                 
-                # Get full paths for image processing
-                user_photo_path = generated_image.user_photo.path
-                frame_path = frame.frame_image.path if frame else campaign.frame_image.path
+                # Get user photo (handle both Cloudinary URL and local path)
+                if 'cloudinary.com' in generated_image.user_photo.url:
+                    # Download from Cloudinary
+                    user_photo_path = download_image_from_url(generated_image.user_photo.url)
+                else:
+                    user_photo_path = generated_image.user_photo.path
+                
+                # Get frame (handle both Cloudinary URL and local path)
+                frame_image = frame.frame_image if frame else campaign.frame_image
+                if 'cloudinary.com' in frame_image.url:
+                    frame_path_or_url = frame_image.url
+                else:
+                    frame_path_or_url = frame_image.path
                 
                 # Call overlay_frame_on_photo utility function
                 try:
-                    generated_image_relative_path = overlay_frame_on_photo(
+                    generated_result = overlay_frame_on_photo(
                         user_photo_path, 
-                        frame_path, 
+                        frame_path_or_url, 
                         output_size
                     )
                 except ValueError as e:
@@ -527,8 +556,18 @@ class GenerateImageView(APIView):
                         'error': f'Image processing failed: {str(e)}'
                     }, status=status.HTTP_400_BAD_REQUEST)
                 
-                # Update GeneratedImage record with generated image path
-                generated_image.generated_image = generated_image_relative_path
+                # Update GeneratedImage record with generated image
+                if hasattr(generated_result, 'read'):
+                    # It's a ContentFile (Cloudinary)
+                    generated_image.generated_image.save(
+                        f"{uuid.uuid4().hex}.png",
+                        generated_result,
+                        save=False
+                    )
+                else:
+                    # It's a path string (local storage)
+                    generated_image.generated_image = generated_result
+                
                 generated_image.save()
             
             # Serialize and return response

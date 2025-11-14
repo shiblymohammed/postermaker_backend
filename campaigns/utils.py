@@ -4,9 +4,11 @@ Image processing utilities for FrameGen application.
 import os
 import uuid
 import base64
+import requests
 from io import BytesIO
 from PIL import Image
 from django.conf import settings
+from django.core.files.base import ContentFile
 
 
 def process_base64_image(base64_data):
@@ -39,17 +41,32 @@ def process_base64_image(base64_data):
         raise ValueError(f"Invalid base64 image data: {str(e)}")
 
 
-def overlay_frame_on_photo(user_photo_path, frame_path, output_size='instagram_post'):
+def download_image_from_url(url):
+    """
+    Download image from URL (for Cloudinary images).
+    
+    Args:
+        url: Image URL
+    
+    Returns:
+        PIL Image object
+    """
+    response = requests.get(url, timeout=30)
+    response.raise_for_status()
+    return Image.open(BytesIO(response.content))
+
+
+def overlay_frame_on_photo(user_photo_path, frame_path_or_url, output_size='instagram_post'):
     """
     Overlay a transparent frame PNG on top of a user's photo.
     
     Args:
         user_photo_path: Path to the user's uploaded photo OR PIL Image object
-        frame_path: Path to the campaign frame PNG
+        frame_path_or_url: Path to the campaign frame PNG OR URL (for Cloudinary)
         output_size: Output size option ('instagram_post', 'instagram_story', 'whatsapp_dp')
     
     Returns:
-        str: Relative path to the generated image (from MEDIA_ROOT)
+        str: Relative path to the generated image (from MEDIA_ROOT) OR ContentFile for Cloudinary
     
     Raises:
         ValueError: If images cannot be processed
@@ -72,8 +89,13 @@ def overlay_frame_on_photo(user_photo_path, frame_path, output_size='instagram_p
         else:
             user_photo = Image.open(user_photo_path)
         
-        # Load frame
-        frame = Image.open(frame_path)
+        # Load frame (support both local path and URL)
+        if isinstance(frame_path_or_url, str) and (frame_path_or_url.startswith('http://') or frame_path_or_url.startswith('https://')):
+            # Download from URL (Cloudinary)
+            frame = download_image_from_url(frame_path_or_url)
+        else:
+            # Load from local path
+            frame = Image.open(frame_path_or_url)
         
         # Convert user photo to RGB if needed (handle RGBA, P, etc.)
         if user_photo.mode not in ('RGB', 'RGBA'):
@@ -104,16 +126,28 @@ def overlay_frame_on_photo(user_photo_path, frame_path, output_size='instagram_p
         
         # Generate unique filename
         unique_filename = f"{uuid.uuid4().hex}.png"
-        relative_path = os.path.join('generated', unique_filename)
-        full_path = os.path.join(settings.MEDIA_ROOT, relative_path)
         
-        # Ensure generated directory exists
-        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        # Check if using Cloudinary
+        using_cloudinary = hasattr(settings, 'DEFAULT_FILE_STORAGE') and 'cloudinary' in settings.DEFAULT_FILE_STORAGE
         
-        # Save result as PNG to preserve transparency with high quality
-        final_image.save(full_path, 'PNG', optimize=True, quality=95)
-        
-        return relative_path
+        if using_cloudinary:
+            # Save to BytesIO and return as ContentFile for Cloudinary
+            buffer = BytesIO()
+            final_image.save(buffer, 'PNG', optimize=True, quality=95)
+            buffer.seek(0)
+            return ContentFile(buffer.getvalue(), name=f"generated/{unique_filename}")
+        else:
+            # Save to local filesystem
+            relative_path = os.path.join('generated', unique_filename)
+            full_path = os.path.join(settings.MEDIA_ROOT, relative_path)
+            
+            # Ensure generated directory exists
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            
+            # Save result as PNG to preserve transparency with high quality
+            final_image.save(full_path, 'PNG', optimize=True, quality=95)
+            
+            return relative_path
         
     except Exception as e:
         raise ValueError(f"Error processing images: {str(e)}")
