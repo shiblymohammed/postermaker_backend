@@ -158,10 +158,19 @@ CLOUDINARY_STORAGE = {
     'API_SECRET': config('CLOUDINARY_API_SECRET', default=''),
 }
 
+# Configure cloudinary library directly
+cloudinary.config(
+    cloud_name=CLOUDINARY_STORAGE['CLOUD_NAME'],
+    api_key=CLOUDINARY_STORAGE['API_KEY'],
+    api_secret=CLOUDINARY_STORAGE['API_SECRET'],
+    secure=True
+)
+
 # Only use Cloudinary if credentials are provided, otherwise use local storage
 if CLOUDINARY_STORAGE['CLOUD_NAME'] and CLOUDINARY_STORAGE['API_KEY']:
     DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
     print("✓ Cloudinary storage enabled")
+    print(f"✓ Cloud name: {CLOUDINARY_STORAGE['CLOUD_NAME']}")
 else:
     print("⚠ Using local file storage (Cloudinary not configured)")
 

@@ -1,12 +1,13 @@
 import random
 import string
 from django.db import models
+from cloudinary.models import CloudinaryField
 
 
 class Campaign(models.Model):
     name = models.CharField(max_length=100, default='Untitled Campaign', help_text="Campaign name (e.g., 'Summer Sale', 'Wedding 2024')")
     code = models.CharField(max_length=6, unique=True, db_index=True)
-    frame_image = models.ImageField(upload_to='frames/', null=True, blank=True)  # Keep for backward compatibility
+    frame_image = CloudinaryField('image', folder='frames/', null=True, blank=True)  # Keep for backward compatibility
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
     
@@ -48,7 +49,7 @@ class CampaignFrame(models.Model):
         on_delete=models.CASCADE,
         related_name='frames'
     )
-    frame_image = models.ImageField(upload_to='frames/')
+    frame_image = CloudinaryField('image', folder='frames/')
     name = models.CharField(max_length=100, default='Frame')
     is_default = models.BooleanField(default=False)
     order = models.IntegerField(default=0)
@@ -83,8 +84,8 @@ class GeneratedImage(models.Model):
         blank=True,
         related_name='generated_images'
     )
-    user_photo = models.ImageField(upload_to='user_photos/')
-    generated_image = models.ImageField(upload_to='generated/')
+    user_photo = CloudinaryField('image', folder='user_photos/', blank=True, null=True)
+    generated_image = CloudinaryField('image', folder='generated/')
     
     # Generation parameters
     output_size = models.CharField(max_length=50, default='instagram_post')
