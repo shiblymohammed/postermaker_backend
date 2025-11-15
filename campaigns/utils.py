@@ -101,7 +101,8 @@ def create_three_layer_poster(
         else:
             poster = Image.open(poster_image_path_or_url)
         
-        # Use poster size as target size (output matches poster dimensions)
+        # Use poster size as target size (output matches poster dimensions exactly)
+        # This ensures the output has the same size and aspect ratio as the original poster
         target_size = poster.size
         
         # Convert poster to RGB/RGBA if needed
@@ -172,10 +173,13 @@ def create_three_layer_poster(
         # Paste circular profile onto canvas
         canvas.paste(profile_circular, (paste_x, paste_y), profile_circular)
         
-        # Resize and overlay frame
+        # Resize and overlay frame to match poster size exactly
+        # Frame should be designed at the same aspect ratio as posters
         if frame.mode != 'RGBA':
             frame = frame.convert('RGBA')
         if frame.size != target_size:
+            # Resize frame to exact poster dimensions
+            # Frames should be uploaded at same aspect ratio as posters for best results
             frame = frame.resize(target_size, Image.Resampling.LANCZOS)
         
         # Composite frame on top
