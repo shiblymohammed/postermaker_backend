@@ -198,17 +198,11 @@ def create_three_layer_poster(
             buffer.seek(0)
             return ContentFile(buffer.getvalue(), name=f"generated/{unique_filename}")
         else:
-            # Save to local filesystem
-            relative_path = os.path.join('generated', unique_filename)
-            full_path = os.path.join(settings.MEDIA_ROOT, relative_path)
-            
-            # Ensure generated directory exists
-            os.makedirs(os.path.dirname(full_path), exist_ok=True)
-            
-            # Save result as PNG
-            canvas.save(full_path, 'PNG', optimize=True, quality=95)
-            
-            return relative_path
+            # Save to local filesystem and return as ContentFile
+            buffer = BytesIO()
+            canvas.save(buffer, 'PNG', optimize=True, quality=95)
+            buffer.seek(0)
+            return ContentFile(buffer.getvalue(), name=f"generated/{unique_filename}")
         
     except Exception as e:
         raise ValueError(f"Error creating 3-layer poster: {str(e)}")

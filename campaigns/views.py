@@ -725,18 +725,12 @@ class GenerateThreeLayerPosterView(APIView):
                 profile_position=profile_position
             )
             
-            # Save the generated image
-            if hasattr(generated_result, 'read'):
-                # It's a ContentFile (Cloudinary)
-                generated_image.generated_image.save(
-                    f"{uuid.uuid4().hex}.png",
-                    generated_result,
-                    save=False
-                )
-            else:
-                # It's a path string (local storage)
-                generated_image.generated_image = generated_result
-            
+            # Save the generated image (always ContentFile now)
+            generated_image.generated_image.save(
+                f"{uuid.uuid4().hex}.png",
+                generated_result,
+                save=False
+            )
             generated_image.save()
             
             # Serialize and return response
