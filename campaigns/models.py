@@ -84,16 +84,16 @@ class GeneratedImage(models.Model):
         blank=True,
         related_name='generated_images'
     )
-    user_photo = CloudinaryField('image', folder='user_photos/', blank=True, null=True)
-    generated_image = CloudinaryField('image', folder='generated/')
+    # New 3-layer system
+    poster_image = CloudinaryField('image', folder='posters/', blank=True, null=True)  # Background layer
+    profile_photo = CloudinaryField('image', folder='profiles/', blank=True, null=True)  # Middle layer (circular)
+    generated_image = CloudinaryField('image', folder='generated/')  # Final output
+    
+    # Profile photo positioning (JSON field for flexibility)
+    profile_position = models.JSONField(default=dict, blank=True)  # {x, y, scale, rotation}
     
     # Generation parameters
-    output_size = models.CharField(max_length=50, default='instagram_post')
-    frame_rotation = models.IntegerField(default=0)  # 0, 90, 180, 270
-    frame_flip_h = models.BooleanField(default=False)
-    frame_flip_v = models.BooleanField(default=False)
-    frame_scale = models.FloatField(default=1.0)
-    frame_opacity = models.FloatField(default=1.0)
+    output_size = models.CharField(max_length=50, default='square_1080')  # Changed default
     
     created_at = models.DateTimeField(auto_now_add=True)
     

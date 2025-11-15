@@ -6,7 +6,7 @@ import uuid
 import base64
 import requests
 from io import BytesIO
-from PIL import Image
+from PIL import Image, ImageDraw
 from django.conf import settings
 from django.core.files.base import ContentFile
 
@@ -54,6 +54,165 @@ def download_image_from_url(url):
     response = requests.get(url, timeout=30)
     response.raise_for_status()
     return Image.open(BytesIO(response.content))
+
+
+def create_circular_mask(size):
+    """
+    Create a circular mask for profile photo.
+    
+    Args:
+        size: Tuple of (width, height)
+    
+    Returns:
+        PIL Image mask (L mode)
+    """
+    mask = Image.new('L', size, 0)
+    draw = ImageDraw.Draw(mask)
+    draw.ellipse((0, 0) + size, fill=255)
+    return mask
+
+
+def create_three_layer_poster(
+    poster_image_path_or_url,
+    profile_image_path_or_url,
+    frame_path_or_url,
+    profile_position,
+    output_size='square_1080'
+):
+    """
+    Create a 3-layer poster: poster background + circular profile + frame overlay.
+    
+    Args:
+        poster_image_path_or_url: Path or URL to poster background
+        profile_image_path_or_url: Path or URL to profile photo
+        frame_path_or_url: Path or URL to frame overlay
+        profile_position: Dict with {x, y, scale, rotation}
+        output_size: Output size option
+    
+    Returns:
+        ContentFile for Cloudinary or path string for local storage
+    """
+    try:
+        # Size mapping
+        size_map = {
+            'square_1080': (1080, 1080),
+            'square_2000': (2000, 2000),
+        }
+        
+        target_size = size_map.get(output_size, (1080, 1080))
+        
+        # Load poster background
+        if isinstance(poster_image_path_or_url, Image.Image):
+            poster = poster_image_path_or_url
+        elif isinstance(poster_image_path_or_url, str) and (poster_image_path_or_url.startswith('http://') or poster_image_path_or_url.startswith('https://')):
+            poster = download_image_from_url(poster_image_path_or_url)
+        else:
+            poster = Image.open(poster_image_path_or_url)
+        
+        # Load profile photo
+        if isinstance(profile_image_path_or_url, Image.Image):
+            profile = profile_image_path_or_url
+        elif isinstance(profile_image_path_or_url, str) and (profile_image_path_or_url.startswith('http://') or profile_image_path_or_url.startswith('https://')):
+            profile = download_image_from_url(profile_image_path_or_url)
+        else:
+            profile = Image.open(profile_image_path_or_url)
+        
+        # Load frame
+        if isinstance(frame_path_or_url, str) and (frame_path_or_url.startswith('http://') or frame_path_or_url.startswith('https://')):
+            frame = download_image_from_url(frame_path_or_url)
+        else:
+            frame = Image.open(frame_path_or_url)
+        
+        # Resize poster to target size
+        if poster.mode not in ('RGB', 'RGBA'):
+            poster = poster.convert('RGB')
+        if poster.size != target_size:
+            poster = poster.resize(target_size, Image.Resampling.LANCZOS)
+        
+        # Create base canvas
+        canvas = Image.new('RGBA', target_size)
+        if poster.mode == 'RGBA':
+            canvas.paste(poster, (0, 0))
+        else:
+            canvas.paste(poster, (0, 0))
+        
+        # Process profile photo
+        if profile.mode not in ('RGB', 'RGBA'):
+            profile = profile.convert('RGBA')
+        
+        # Get profile position parameters
+        x = profile_position.get('x', target_size[0] // 2)
+        y = profile_position.get('y', target_size[1] // 2)
+        scale = profile_position.get('scale', 1.0)
+        rotation = profile_position.get('rotation', 0)
+        
+        # Calculate profile size (default to 30% of canvas)
+        base_profile_size = int(min(target_size) * 0.3)
+        profile_size = int(base_profile_size * scale)
+        
+        # Resize profile photo to square
+        profile_square_size = max(profile.size)
+        profile_square = Image.new('RGBA', (profile_square_size, profile_square_size), (0, 0, 0, 0))
+        profile_square.paste(profile, ((profile_square_size - profile.size[0]) // 2, (profile_square_size - profile.size[1]) // 2))
+        
+        # Resize to target profile size
+        profile_resized = profile_square.resize((profile_size, profile_size), Image.Resampling.LANCZOS)
+        
+        # Rotate if needed
+        if rotation != 0:
+            profile_resized = profile_resized.rotate(rotation, expand=False)
+        
+        # Create circular mask
+        mask = create_circular_mask((profile_size, profile_size))
+        
+        # Apply circular mask to profile
+        profile_circular = Image.new('RGBA', (profile_size, profile_size), (0, 0, 0, 0))
+        profile_circular.paste(profile_resized, (0, 0))
+        profile_circular.putalpha(mask)
+        
+        # Calculate position (x, y are center coordinates)
+        paste_x = int(x - profile_size // 2)
+        paste_y = int(y - profile_size // 2)
+        
+        # Paste circular profile onto canvas
+        canvas.paste(profile_circular, (paste_x, paste_y), profile_circular)
+        
+        # Resize and overlay frame
+        if frame.mode != 'RGBA':
+            frame = frame.convert('RGBA')
+        if frame.size != target_size:
+            frame = frame.resize(target_size, Image.Resampling.LANCZOS)
+        
+        # Composite frame on top
+        canvas.paste(frame, (0, 0), frame)
+        
+        # Generate unique filename
+        unique_filename = f"{uuid.uuid4().hex}.png"
+        
+        # Check if using Cloudinary
+        using_cloudinary = hasattr(settings, 'DEFAULT_FILE_STORAGE') and 'cloudinary' in settings.DEFAULT_FILE_STORAGE
+        
+        if using_cloudinary:
+            # Save to BytesIO and return as ContentFile for Cloudinary
+            buffer = BytesIO()
+            canvas.save(buffer, 'PNG', optimize=True, quality=95)
+            buffer.seek(0)
+            return ContentFile(buffer.getvalue(), name=f"generated/{unique_filename}")
+        else:
+            # Save to local filesystem
+            relative_path = os.path.join('generated', unique_filename)
+            full_path = os.path.join(settings.MEDIA_ROOT, relative_path)
+            
+            # Ensure generated directory exists
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            
+            # Save result as PNG
+            canvas.save(full_path, 'PNG', optimize=True, quality=95)
+            
+            return relative_path
+        
+    except Exception as e:
+        raise ValueError(f"Error creating 3-layer poster: {str(e)}")
 
 
 def overlay_frame_on_photo(user_photo_path, frame_path_or_url, output_size='instagram_post'):

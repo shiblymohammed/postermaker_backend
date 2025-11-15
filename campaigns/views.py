@@ -9,7 +9,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import LoginSerializer, UserSerializer, CampaignSerializer, CampaignFrameSerializer, GeneratedImageSerializer
 from .models import Campaign, CampaignFrame, GeneratedImage
-from .utils import overlay_frame_on_photo, process_base64_image, download_image_from_url
+from .utils import overlay_frame_on_photo, process_base64_image, download_image_from_url, create_three_layer_poster
 
 
 class AdminLoginView(APIView):
@@ -583,6 +583,157 @@ class GenerateImageView(APIView):
                 'error': f'Failed to generate image: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+
+class GenerateThreeLayerPosterView(APIView):
+    """
+    Generate 3-layer poster: poster background + circular profile + frame overlay.
+    
+    POST /api/generate-poster/
+    Request: {
+        "code": "string",
+        "frame_id": int,
+        "poster_data": "base64...",
+        "profile_data": "base64...",
+        "profile_position": {"x": int, "y": int, "scale": float, "rotation": int}
+    }
+    Response: {"generated_image_url": "string", "message": "string"}
+    """
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        # Validate required fields
+        code = request.data.get('code')
+        poster_data = request.data.get('poster_data')
+        profile_data = request.data.get('profile_data')
+        
+        if not code:
+            return Response({
+                'error': 'Campaign code is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not poster_data:
+            return Response({
+                'error': 'Poster image is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not profile_data:
+            return Response({
+                'error': 'Profile photo is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate campaign
+        try:
+            campaign = Campaign.objects.get(code=code)
+            if not campaign.is_active:
+                return Response({
+                    'error': 'Invalid campaign code'
+                }, status=status.HTTP_404_NOT_FOUND)
+        except Campaign.DoesNotExist:
+            return Response({
+                'error': 'Invalid campaign code'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get frame
+        frame_id = request.data.get('frame_id')
+        frame = None
+        if frame_id:
+            try:
+                frame = campaign.frames.get(pk=frame_id)
+            except CampaignFrame.DoesNotExist:
+                frame = campaign.frames.filter(is_default=True).first() or campaign.frames.first()
+        else:
+            frame = campaign.frames.filter(is_default=True).first() or campaign.frames.first()
+        
+        if not frame:
+            return Response({
+                'error': 'No frame available for this campaign'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get profile position
+        profile_position = request.data.get('profile_position', {})
+        if isinstance(profile_position, str):
+            import json
+            try:
+                profile_position = json.loads(profile_position)
+            except:
+                profile_position = {}
+        
+        # Get output size
+        output_size = request.data.get('output_size', 'square_1080')
+        
+        try:
+            # Process poster image
+            try:
+                poster_image = process_base64_image(poster_data)
+            except ValueError as e:
+                return Response({
+                    'error': f'Invalid poster image: {str(e)}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Process profile image
+            try:
+                profile_image = process_base64_image(profile_data)
+            except ValueError as e:
+                return Response({
+                    'error': f'Invalid profile image: {str(e)}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Get frame path or URL
+            if 'cloudinary.com' in frame.frame_image.url:
+                frame_path_or_url = frame.frame_image.url
+            else:
+                frame_path_or_url = frame.frame_image.path
+            
+            # Generate 3-layer poster
+            try:
+                generated_result = create_three_layer_poster(
+                    poster_image,
+                    profile_image,
+                    frame_path_or_url,
+                    profile_position,
+                    output_size
+                )
+            except ValueError as e:
+                return Response({
+                    'error': f'Image processing failed: {str(e)}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Create GeneratedImage record
+            generated_image = GeneratedImage(
+                campaign=campaign,
+                frame=frame,
+                output_size=output_size,
+                profile_position=profile_position
+            )
+            
+            # Save the generated image
+            if hasattr(generated_result, 'read'):
+                # It's a ContentFile (Cloudinary)
+                generated_image.generated_image.save(
+                    f"{uuid.uuid4().hex}.png",
+                    generated_result,
+                    save=False
+                )
+            else:
+                # It's a path string (local storage)
+                generated_image.generated_image = generated_result
+            
+            generated_image.save()
+            
+            # Serialize and return response
+            serializer = GeneratedImageSerializer(generated_image, context={'request': request})
+            
+            return Response({
+                'generated_image_url': serializer.data['generated_image_url'],
+                'message': 'Poster generated successfully'
+            }, status=status.HTTP_200_OK)
+        
+        except Exception as e:
+            # Handle any other errors
+            return Response({
+                'error': f'Failed to generate poster: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class CampaignFramesView(APIView):

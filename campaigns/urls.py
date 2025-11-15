@@ -3,7 +3,7 @@ from .views import (
     AdminLoginView, CampaignCreateView, CampaignListView, CampaignManageView,
     CampaignDetailView, CampaignBySlugView, GenerateImageView,
     CampaignFramesView, CampaignFrameManageView, CampaignFrameDetailView,
-    CloudinaryStatusView
+    CloudinaryStatusView, GenerateThreeLayerPosterView
 )
 
 urlpatterns = [
@@ -26,6 +26,7 @@ urlpatterns = [
     
     # Image generation
     path('generate/', GenerateImageView.as_view(), name='generate-image'),
+    path('generate-poster/', GenerateThreeLayerPosterView.as_view(), name='generate-poster'),  # New 3-layer endpoint
     
     # Diagnostic endpoint
     path('cloudinary-status/', CloudinaryStatusView.as_view(), name='cloudinary-status'),
