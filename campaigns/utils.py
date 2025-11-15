@@ -104,6 +104,7 @@ def create_three_layer_poster(
         # Use poster size as target size (output matches poster dimensions exactly)
         # This ensures the output has the same size and aspect ratio as the original poster
         target_size = poster.size
+        print(f"DEBUG: Poster size: {poster.size}, Target size: {target_size}")
         
         # Convert poster to RGB/RGBA if needed
         if poster.mode not in ('RGB', 'RGBA'):
@@ -124,6 +125,8 @@ def create_three_layer_poster(
             frame = download_image_from_url(frame_path_or_url)
         else:
             frame = Image.open(frame_path_or_url)
+        
+        print(f"DEBUG: Frame original size: {frame.size}")
         
         # Create base canvas
         canvas = Image.new('RGBA', target_size)
@@ -177,10 +180,14 @@ def create_three_layer_poster(
         # Frame should be designed at the same aspect ratio as posters
         if frame.mode != 'RGBA':
             frame = frame.convert('RGBA')
+        
+        print(f"DEBUG: Before resize - Frame size: {frame.size}, Target size: {target_size}")
+        
         if frame.size != target_size:
-            # Resize frame to exact poster dimensions
+            # Resize frame to exact poster dimensions (will stretch if aspect ratios differ)
             # Frames should be uploaded at same aspect ratio as posters for best results
             frame = frame.resize(target_size, Image.Resampling.LANCZOS)
+            print(f"DEBUG: After resize - Frame size: {frame.size}")
         
         # Composite frame on top
         canvas.paste(frame, (0, 0), frame)
@@ -191,11 +198,14 @@ def create_three_layer_poster(
         # Check if using Cloudinary
         using_cloudinary = hasattr(settings, 'DEFAULT_FILE_STORAGE') and 'cloudinary' in settings.DEFAULT_FILE_STORAGE
         
+        print(f"DEBUG: Final canvas size before save: {canvas.size}")
+        
         if using_cloudinary:
             # Save to BytesIO and return as ContentFile for Cloudinary
             buffer = BytesIO()
             canvas.save(buffer, 'PNG', optimize=True, quality=95)
             buffer.seek(0)
+            print(f"DEBUG: Saved to Cloudinary with size: {canvas.size}")
             return ContentFile(buffer.getvalue(), name=f"generated/{unique_filename}")
         else:
             # Save to local filesystem and return as ContentFile
