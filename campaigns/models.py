@@ -42,6 +42,35 @@ class Campaign(models.Model):
         raise ValueError("Unable to generate unique code after maximum attempts")
 
 
+class CampaignPoster(models.Model):
+    """Poster backgrounds for a campaign"""
+    campaign = models.ForeignKey(
+        Campaign,
+        on_delete=models.CASCADE,
+        related_name='posters'
+    )
+    poster_image = CloudinaryField('image', folder='posters/')
+    name = models.CharField(max_length=100, default='Poster')
+    is_default = models.BooleanField(default=False)
+    order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['order', 'created_at']
+        
+    def __str__(self):
+        return f"{self.name} - {self.campaign.name}"
+    
+    def save(self, *args, **kwargs):
+        # If this is set as default, unset other defaults
+        if self.is_default:
+            CampaignPoster.objects.filter(
+                campaign=self.campaign,
+                is_default=True
+            ).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+
+
 class CampaignFrame(models.Model):
     """Multiple frames for a campaign"""
     campaign = models.ForeignKey(
@@ -77,6 +106,13 @@ class GeneratedImage(models.Model):
         on_delete=models.CASCADE, 
         related_name='generated_images'
     )
+    poster = models.ForeignKey(
+        CampaignPoster,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='generated_images'
+    )
     frame = models.ForeignKey(
         CampaignFrame,
         on_delete=models.SET_NULL,
@@ -85,7 +121,6 @@ class GeneratedImage(models.Model):
         related_name='generated_images'
     )
     # New 3-layer system
-    poster_image = CloudinaryField('image', folder='posters/', blank=True, null=True)  # Background layer
     profile_photo = CloudinaryField('image', folder='profiles/', blank=True, null=True)  # Middle layer (circular)
     generated_image = CloudinaryField('image', folder='generated/')  # Final output
     

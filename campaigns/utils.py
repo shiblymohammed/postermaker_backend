@@ -93,21 +93,20 @@ def create_three_layer_poster(
         ContentFile for Cloudinary or path string for local storage
     """
     try:
-        # Size mapping
-        size_map = {
-            'square_1080': (1080, 1080),
-            'square_2000': (2000, 2000),
-        }
-        
-        target_size = size_map.get(output_size, (1080, 1080))
-        
-        # Load poster background
+        # Load poster background first to get its size
         if isinstance(poster_image_path_or_url, Image.Image):
             poster = poster_image_path_or_url
         elif isinstance(poster_image_path_or_url, str) and (poster_image_path_or_url.startswith('http://') or poster_image_path_or_url.startswith('https://')):
             poster = download_image_from_url(poster_image_path_or_url)
         else:
             poster = Image.open(poster_image_path_or_url)
+        
+        # Use poster size as target size (output matches poster dimensions)
+        target_size = poster.size
+        
+        # Convert poster to RGB/RGBA if needed
+        if poster.mode not in ('RGB', 'RGBA'):
+            poster = poster.convert('RGB')
         
         # Load profile photo
         if isinstance(profile_image_path_or_url, Image.Image):
@@ -118,16 +117,12 @@ def create_three_layer_poster(
             profile = Image.open(profile_image_path_or_url)
         
         # Load frame
-        if isinstance(frame_path_or_url, str) and (frame_path_or_url.startswith('http://') or frame_path_or_url.startswith('https://')):
+        if isinstance(frame_path_or_url, Image.Image):
+            frame = frame_path_or_url
+        elif isinstance(frame_path_or_url, str) and (frame_path_or_url.startswith('http://') or frame_path_or_url.startswith('https://')):
             frame = download_image_from_url(frame_path_or_url)
         else:
             frame = Image.open(frame_path_or_url)
-        
-        # Resize poster to target size
-        if poster.mode not in ('RGB', 'RGBA'):
-            poster = poster.convert('RGB')
-        if poster.size != target_size:
-            poster = poster.resize(target_size, Image.Resampling.LANCZOS)
         
         # Create base canvas
         canvas = Image.new('RGBA', target_size)

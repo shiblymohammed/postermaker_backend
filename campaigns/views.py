@@ -7,8 +7,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import LoginSerializer, UserSerializer, CampaignSerializer, CampaignFrameSerializer, GeneratedImageSerializer
-from .models import Campaign, CampaignFrame, GeneratedImage
+from .serializers import LoginSerializer, UserSerializer, CampaignSerializer, CampaignPosterSerializer, CampaignFrameSerializer, GeneratedImageSerializer
+from .models import Campaign, CampaignPoster, CampaignFrame, GeneratedImage
 from .utils import overlay_frame_on_photo, process_base64_image, download_image_from_url, create_three_layer_poster
 
 
@@ -343,12 +343,22 @@ class CampaignBySlugView(APIView):
                 # Redirect to correct slug or just accept it
                 pass
             
+            # Get all posters for this campaign
+            posters = campaign.posters.all()
+            posters_data = [{
+                'id': poster.id,
+                'name': poster.name,
+                'poster_url': request.build_absolute_uri(poster.poster_image.url) if poster.poster_image else None,
+                'is_default': poster.is_default
+            } for poster in posters]
+            
             # Get all frames for this campaign
             frames = campaign.frames.all()
             frames_data = [{
                 'id': frame.id,
                 'name': frame.name,
-                'frame_url': request.build_absolute_uri(frame.frame_image.url) if frame.frame_image else None
+                'frame_url': request.build_absolute_uri(frame.frame_image.url) if frame.frame_image else None,
+                'is_default': frame.is_default
             } for frame in frames]
             
             return Response({
@@ -356,6 +366,7 @@ class CampaignBySlugView(APIView):
                 'name': campaign.name,
                 'code': campaign.code,
                 'description': f'Create stunning campaign posters for {campaign.name}',
+                'posters': posters_data,
                 'frames': frames_data
             }, status=status.HTTP_200_OK)
         
@@ -604,7 +615,7 @@ class GenerateThreeLayerPosterView(APIView):
     def post(self, request):
         # Validate required fields
         code = request.data.get('code')
-        poster_data = request.data.get('poster_data')
+        poster_id = request.data.get('poster_id')
         profile_data = request.data.get('profile_data')
         
         if not code:
@@ -612,9 +623,9 @@ class GenerateThreeLayerPosterView(APIView):
                 'error': 'Campaign code is required'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        if not poster_data:
+        if not poster_id:
             return Response({
-                'error': 'Poster image is required'
+                'error': 'Poster selection is required'
             }, status=status.HTTP_400_BAD_REQUEST)
         
         if not profile_data:
@@ -633,6 +644,14 @@ class GenerateThreeLayerPosterView(APIView):
             return Response({
                 'error': 'Invalid campaign code'
             }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get poster
+        try:
+            poster = campaign.posters.get(pk=poster_id)
+        except CampaignPoster.DoesNotExist:
+            return Response({
+                'error': 'Invalid poster selection'
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         # Get frame
         frame_id = request.data.get('frame_id')
@@ -663,13 +682,11 @@ class GenerateThreeLayerPosterView(APIView):
         output_size = request.data.get('output_size', 'square_1080')
         
         try:
-            # Process poster image
-            try:
-                poster_image = process_base64_image(poster_data)
-            except ValueError as e:
-                return Response({
-                    'error': f'Invalid poster image: {str(e)}'
-                }, status=status.HTTP_400_BAD_REQUEST)
+            # Get poster image path or URL
+            if 'cloudinary.com' in poster.poster_image.url:
+                poster_path_or_url = poster.poster_image.url
+            else:
+                poster_path_or_url = poster.poster_image.path
             
             # Process profile image
             try:
@@ -688,7 +705,7 @@ class GenerateThreeLayerPosterView(APIView):
             # Generate 3-layer poster
             try:
                 generated_result = create_three_layer_poster(
-                    poster_image,
+                    poster_path_or_url,
                     profile_image,
                     frame_path_or_url,
                     profile_position,
@@ -702,6 +719,7 @@ class GenerateThreeLayerPosterView(APIView):
             # Create GeneratedImage record
             generated_image = GeneratedImage(
                 campaign=campaign,
+                poster=poster,
                 frame=frame,
                 output_size=output_size,
                 profile_position=profile_position
@@ -734,6 +752,46 @@ class GenerateThreeLayerPosterView(APIView):
             return Response({
                 'error': f'Failed to generate poster: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class CampaignPostersView(APIView):
+    """
+    List all posters for a campaign (public endpoint for users)
+    
+    GET /api/campaign/slug/<slug>/posters/
+    Response: {"posters": [{"id": int, "name": "string", "poster_url": "string", "is_default": bool}]}
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request, slug):
+        try:
+            # Extract code from slug
+            parts = slug.split('-')
+            if len(parts) < 2:
+                return Response({
+                    'error': 'Invalid campaign URL'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            code = parts[-1]
+            campaign = Campaign.objects.get(code=code)
+            
+            if not campaign.is_active:
+                return Response({
+                    'error': 'Campaign not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Get all posters for this campaign
+            posters = campaign.posters.all()
+            serializer = CampaignPosterSerializer(posters, many=True, context={'request': request})
+            
+            return Response({
+                'posters': serializer.data
+            }, status=status.HTTP_200_OK)
+        
+        except Campaign.DoesNotExist:
+            return Response({
+                'error': 'Campaign not found'
+            }, status=status.HTTP_404_NOT_FOUND)
 
 
 class CampaignFramesView(APIView):
@@ -776,6 +834,150 @@ class CampaignFramesView(APIView):
         except Campaign.DoesNotExist:
             return Response({
                 'error': 'Campaign not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+
+class CampaignPosterManageView(APIView):
+    """
+    Manage posters for a campaign (admin only)
+    
+    POST /api/admin/campaign/<id>/posters/
+    Request: Multipart form data with 'name' and 'poster' file
+    Response: Poster data
+    
+    GET /api/admin/campaign/<id>/posters/
+    Response: List of posters
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, pk):
+        """List all posters for a campaign"""
+        try:
+            campaign = Campaign.objects.get(pk=pk)
+            posters = campaign.posters.all()
+            serializer = CampaignPosterSerializer(posters, many=True, context={'request': request})
+            
+            return Response({
+                'posters': serializer.data
+            }, status=status.HTTP_200_OK)
+        
+        except Campaign.DoesNotExist:
+            return Response({
+                'error': 'Campaign not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+    
+    def post(self, request, pk):
+        """Add a new poster to campaign"""
+        try:
+            campaign = Campaign.objects.get(pk=pk)
+        except Campaign.DoesNotExist:
+            return Response({
+                'error': 'Campaign not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check poster limit (max 10 posters)
+        if campaign.posters.count() >= 10:
+            return Response({
+                'error': 'Maximum 10 posters per campaign'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get poster data
+        name = request.data.get('name', 'Poster')
+        is_default = request.data.get('is_default', 'false').lower() == 'true'
+        
+        if 'poster' not in request.FILES:
+            return Response({
+                'error': 'No poster file provided'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        poster_file = request.FILES['poster']
+        
+        # Validate image format
+        valid_extensions = ['.jpg', '.jpeg', '.png']
+        file_extension = os.path.splitext(poster_file.name)[1].lower()
+        if file_extension not in valid_extensions:
+            return Response({
+                'error': 'Invalid image format. Supported: JPG, PNG'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Get next order number
+            max_order = campaign.posters.aggregate(models.Max('order'))['order__max'] or -1
+            
+            # Create poster
+            poster = CampaignPoster.objects.create(
+                campaign=campaign,
+                poster_image=poster_file,
+                name=name,
+                is_default=is_default,
+                order=max_order + 1
+            )
+            
+            serializer = CampaignPosterSerializer(poster, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        except Exception as e:
+            return Response({
+                'error': f'Failed to create poster: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class CampaignPosterDetailView(APIView):
+    """
+    Manage individual poster (admin only)
+    
+    PUT /api/admin/campaign/<campaign_id>/posters/<poster_id>/
+    DELETE /api/admin/campaign/<campaign_id>/posters/<poster_id>/
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def put(self, request, pk, poster_id):
+        """Update poster"""
+        try:
+            campaign = Campaign.objects.get(pk=pk)
+            poster = campaign.posters.get(pk=poster_id)
+        except Campaign.DoesNotExist:
+            return Response({
+                'error': 'Campaign not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except CampaignPoster.DoesNotExist:
+            return Response({
+                'error': 'Poster not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Update fields
+        if 'name' in request.data:
+            poster.name = request.data['name']
+        
+        if 'is_default' in request.data:
+            poster.is_default = request.data['is_default'].lower() == 'true'
+        
+        if 'poster' in request.FILES:
+            poster.poster_image = request.FILES['poster']
+        
+        poster.save()
+        
+        serializer = CampaignPosterSerializer(poster, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    def delete(self, request, pk, poster_id):
+        """Delete poster"""
+        try:
+            campaign = Campaign.objects.get(pk=pk)
+            poster = campaign.posters.get(pk=poster_id)
+            poster.delete()
+            
+            return Response({
+                'message': 'Poster deleted successfully'
+            }, status=status.HTTP_200_OK)
+        
+        except Campaign.DoesNotExist:
+            return Response({
+                'error': 'Campaign not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except CampaignPoster.DoesNotExist:
+            return Response({
+                'error': 'Poster not found'
             }, status=status.HTTP_404_NOT_FOUND)
 
 

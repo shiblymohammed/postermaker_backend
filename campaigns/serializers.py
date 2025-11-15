@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from .models import Campaign, CampaignFrame, GeneratedImage
+from .models import Campaign, CampaignPoster, CampaignFrame, GeneratedImage
 
 
 class LoginSerializer(serializers.Serializer):
@@ -34,6 +34,25 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ['id', 'username']
 
 
+class CampaignPosterSerializer(serializers.ModelSerializer):
+    """Serializer for CampaignPoster model"""
+    poster_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = CampaignPoster
+        fields = ['id', 'name', 'poster_url', 'is_default', 'order', 'created_at']
+        read_only_fields = ['id', 'created_at']
+    
+    def get_poster_url(self, obj):
+        """Return the full URL for the poster image"""
+        if obj.poster_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.poster_image.url)
+            return obj.poster_image.url
+        return None
+
+
 class CampaignFrameSerializer(serializers.ModelSerializer):
     """Serializer for CampaignFrame model"""
     frame_url = serializers.SerializerMethodField()
@@ -54,15 +73,17 @@ class CampaignFrameSerializer(serializers.ModelSerializer):
 
 
 class CampaignSerializer(serializers.ModelSerializer):
-    """Serializer for Campaign model with frames and slug fields"""
+    """Serializer for Campaign model with posters, frames and slug fields"""
     frame_url = serializers.SerializerMethodField()  # Backward compatibility
+    posters = CampaignPosterSerializer(many=True, read_only=True)
     frames = CampaignFrameSerializer(many=True, read_only=True)
+    poster_count = serializers.SerializerMethodField()
     frame_count = serializers.SerializerMethodField()
     slug = serializers.ReadOnlyField()
     
     class Meta:
         model = Campaign
-        fields = ['id', 'name', 'code', 'slug', 'frame_url', 'frames', 'frame_count', 'created_at', 'is_active']
+        fields = ['id', 'name', 'code', 'slug', 'frame_url', 'posters', 'frames', 'poster_count', 'frame_count', 'created_at', 'is_active']
         read_only_fields = ['id', 'code', 'slug', 'created_at']
     
     def get_frame_url(self, obj):
@@ -91,6 +112,10 @@ class CampaignSerializer(serializers.ModelSerializer):
             return obj.frame_image.url
         
         return None
+    
+    def get_poster_count(self, obj):
+        """Return the number of posters"""
+        return obj.posters.count()
     
     def get_frame_count(self, obj):
         """Return the number of frames"""
