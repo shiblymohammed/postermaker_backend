@@ -231,9 +231,9 @@ def create_three_layer_poster(
 
         
         if frame.size != target_size:
-            # Resize frame to exact poster dimensions (will stretch if aspect ratios differ)
-            # Frames should be uploaded at same aspect ratio as posters for best results
-            frame = frame.resize(target_size, Image.Resampling.LANCZOS)
+            # Resize frame to exact poster dimensions
+            # Use BILINEAR for faster processing (LANCZOS is slower but higher quality)
+            frame = frame.resize(target_size, Image.Resampling.BILINEAR)
 
         
         # Composite frame on top
@@ -246,16 +246,26 @@ def create_three_layer_poster(
         using_cloudinary = hasattr(settings, 'DEFAULT_FILE_STORAGE') and 'cloudinary' in settings.DEFAULT_FILE_STORAGE
 
         
+        # Convert to RGB for JPEG (faster than PNG)
+        if canvas.mode == 'RGBA':
+            # Create white background for transparency
+            rgb_canvas = Image.new('RGB', canvas.size, (255, 255, 255))
+            rgb_canvas.paste(canvas, mask=canvas.split()[3])  # Use alpha channel as mask
+            canvas = rgb_canvas
+        
+        # Generate unique filename with jpg extension
+        unique_filename = f"{uuid.uuid4().hex}.jpg"
+        
         if using_cloudinary:
-            # Save to BytesIO and return as ContentFile for Cloudinary
+            # Save to BytesIO as JPEG for faster processing
             buffer = BytesIO()
-            canvas.save(buffer, 'PNG', optimize=True, quality=95)
+            canvas.save(buffer, 'JPEG', optimize=True, quality=85)
             buffer.seek(0)
             return ContentFile(buffer.getvalue(), name=f"generated/{unique_filename}")
         else:
-            # Save to local filesystem and return as ContentFile
+            # Save to local filesystem as JPEG
             buffer = BytesIO()
-            canvas.save(buffer, 'PNG', optimize=True, quality=95)
+            canvas.save(buffer, 'JPEG', optimize=True, quality=85)
             buffer.seek(0)
             return ContentFile(buffer.getvalue(), name=f"generated/{unique_filename}")
         
