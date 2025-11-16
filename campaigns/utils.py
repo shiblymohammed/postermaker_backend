@@ -72,15 +72,33 @@ def create_circular_mask(size):
     return mask
 
 
+def create_rounded_rectangle_mask(size, radius):
+    """
+    Create a rounded rectangle mask for profile photo.
+    
+    Args:
+        size: Tuple of (width, height)
+        radius: Corner radius in pixels
+    
+    Returns:
+        PIL Image mask (L mode)
+    """
+    mask = Image.new('L', size, 0)
+    draw = ImageDraw.Draw(mask)
+    draw.rounded_rectangle((0, 0) + size, radius=radius, fill=255)
+    return mask
+
+
 def create_three_layer_poster(
     poster_image_path_or_url,
     profile_image_path_or_url,
     frame_path_or_url,
     profile_position,
-    output_size='square_1080'
+    output_size='square_1080',
+    crop_shape='circle'
 ):
     """
-    Create a 3-layer poster: poster background + circular profile + frame overlay.
+    Create a 3-layer poster: poster background + profile (with crop shape) + frame overlay.
     
     Args:
         poster_image_path_or_url: Path or URL to poster background
@@ -88,6 +106,7 @@ def create_three_layer_poster(
         frame_path_or_url: Path or URL to frame overlay
         profile_position: Dict with {x, y, scale, rotation}
         output_size: Output size option
+        crop_shape: Shape to crop profile ('circle', 'square', 'rectangle')
     
     Returns:
         ContentFile for Cloudinary or path string for local storage
@@ -104,7 +123,7 @@ def create_three_layer_poster(
         # Use poster size as target size (output matches poster dimensions exactly)
         # This ensures the output has the same size and aspect ratio as the original poster
         target_size = poster.size
-        print(f"DEBUG: Poster size: {poster.size}, Target size: {target_size}")
+
         
         # Convert poster to RGB/RGBA if needed
         if poster.mode not in ('RGB', 'RGBA'):
@@ -125,8 +144,7 @@ def create_three_layer_poster(
             frame = download_image_from_url(frame_path_or_url)
         else:
             frame = Image.open(frame_path_or_url)
-        
-        print(f"DEBUG: Frame original size: {frame.size}")
+
         
         # Create base canvas
         canvas = Image.new('RGBA', target_size)
@@ -145,49 +163,78 @@ def create_three_layer_poster(
         scale = profile_position.get('scale', 1.0)
         rotation = profile_position.get('rotation', 0)
         
-        # Calculate profile size (default to 30% of canvas)
+        # Calculate profile size based on crop shape
         base_profile_size = int(min(target_size) * 0.3)
-        profile_size = int(base_profile_size * scale)
         
-        # Resize profile photo to square
-        profile_square_size = max(profile.size)
-        profile_square = Image.new('RGBA', (profile_square_size, profile_square_size), (0, 0, 0, 0))
-        profile_square.paste(profile, ((profile_square_size - profile.size[0]) // 2, (profile_square_size - profile.size[1]) // 2))
+        if crop_shape == 'rectangle':
+            # Portrait rectangle (taller than wide) - reduced height
+            profile_width = int(base_profile_size * scale)
+            profile_height = int(base_profile_size * scale * 1.3)
+        else:
+            # For circle and square
+            profile_width = int(base_profile_size * scale)
+            profile_height = int(base_profile_size * scale)
         
-        # Resize to target profile size
-        profile_resized = profile_square.resize((profile_size, profile_size), Image.Resampling.LANCZOS)
+        # Resize profile photo to cover the target dimensions (crop, don't stretch)
+        # Calculate scale to cover the target area
+        scale_x = profile_width / profile.size[0]
+        scale_y = profile_height / profile.size[1]
+        scale_factor = max(scale_x, scale_y)  # Use max to cover, not contain
+        
+        # Calculate new size
+        new_width = int(profile.size[0] * scale_factor)
+        new_height = int(profile.size[1] * scale_factor)
+        
+        # Resize profile
+        profile_resized = profile.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        
+        # Crop to exact dimensions (center crop)
+        left = (new_width - profile_width) // 2
+        top = (new_height - profile_height) // 2
+        profile_resized = profile_resized.crop((left, top, left + profile_width, top + profile_height))
         
         # Rotate if needed
         if rotation != 0:
             profile_resized = profile_resized.rotate(rotation, expand=False)
         
-        # Create circular mask
-        mask = create_circular_mask((profile_size, profile_size))
+        # Create mask based on crop shape
+        if crop_shape == 'circle':
+            mask = create_circular_mask((profile_width, profile_height))
+        elif crop_shape == 'square':
+            # Square mask with rounded corners (10% radius)
+            radius = int(profile_width * 0.1)
+            mask = create_rounded_rectangle_mask((profile_width, profile_height), radius)
+        elif crop_shape == 'rectangle':
+            # Portrait rectangle mask with rounded corners (10% radius)
+            radius = int(profile_width * 0.1)
+            mask = create_rounded_rectangle_mask((profile_width, profile_height), radius)
+        else:
+            # Default to circular
+            mask = create_circular_mask((profile_width, profile_height))
         
-        # Apply circular mask to profile
-        profile_circular = Image.new('RGBA', (profile_size, profile_size), (0, 0, 0, 0))
-        profile_circular.paste(profile_resized, (0, 0))
-        profile_circular.putalpha(mask)
+        # Apply mask to profile
+        profile_masked = Image.new('RGBA', (profile_width, profile_height), (0, 0, 0, 0))
+        profile_masked.paste(profile_resized, (0, 0))
+        profile_masked.putalpha(mask)
         
         # Calculate position (x, y are center coordinates)
-        paste_x = int(x - profile_size // 2)
-        paste_y = int(y - profile_size // 2)
+        paste_x = int(x - profile_width // 2)
+        paste_y = int(y - profile_height // 2)
         
-        # Paste circular profile onto canvas
-        canvas.paste(profile_circular, (paste_x, paste_y), profile_circular)
+        # Paste masked profile onto canvas
+        canvas.paste(profile_masked, (paste_x, paste_y), profile_masked)
         
         # Resize and overlay frame to match poster size exactly
         # Frame should be designed at the same aspect ratio as posters
         if frame.mode != 'RGBA':
             frame = frame.convert('RGBA')
-        
-        print(f"DEBUG: Before resize - Frame size: {frame.size}, Target size: {target_size}")
+
         
         if frame.size != target_size:
             # Resize frame to exact poster dimensions (will stretch if aspect ratios differ)
             # Frames should be uploaded at same aspect ratio as posters for best results
             frame = frame.resize(target_size, Image.Resampling.LANCZOS)
-            print(f"DEBUG: After resize - Frame size: {frame.size}")
+
         
         # Composite frame on top
         canvas.paste(frame, (0, 0), frame)
@@ -197,15 +244,13 @@ def create_three_layer_poster(
         
         # Check if using Cloudinary
         using_cloudinary = hasattr(settings, 'DEFAULT_FILE_STORAGE') and 'cloudinary' in settings.DEFAULT_FILE_STORAGE
-        
-        print(f"DEBUG: Final canvas size before save: {canvas.size}")
+
         
         if using_cloudinary:
             # Save to BytesIO and return as ContentFile for Cloudinary
             buffer = BytesIO()
             canvas.save(buffer, 'PNG', optimize=True, quality=95)
             buffer.seek(0)
-            print(f"DEBUG: Saved to Cloudinary with size: {canvas.size}")
             return ContentFile(buffer.getvalue(), name=f"generated/{unique_filename}")
         else:
             # Save to local filesystem and return as ContentFile

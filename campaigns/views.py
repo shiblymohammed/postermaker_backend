@@ -678,15 +678,24 @@ class GenerateThreeLayerPosterView(APIView):
             except:
                 profile_position = {}
         
+        # Get crop shape
+        crop_shape = request.data.get('crop_shape', 'circle')
+        
         # Get output size
         output_size = request.data.get('output_size', 'square_1080')
         
         try:
             # Get poster image path or URL
-            if 'cloudinary.com' in poster.poster_image.url:
-                poster_path_or_url = poster.poster_image.url
-            else:
-                poster_path_or_url = poster.poster_image.path
+            try:
+                poster_url = poster.poster_image.url
+                if 'cloudinary.com' in poster_url:
+                    poster_path_or_url = poster_url
+                else:
+                    poster_path_or_url = poster.poster_image.path
+            except Exception as e:
+                return Response({
+                    'error': f'Failed to access poster image: {str(e)}'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # Process profile image
             try:
@@ -697,10 +706,16 @@ class GenerateThreeLayerPosterView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             # Get frame path or URL
-            if 'cloudinary.com' in frame.frame_image.url:
-                frame_path_or_url = frame.frame_image.url
-            else:
-                frame_path_or_url = frame.frame_image.path
+            try:
+                frame_url = frame.frame_image.url
+                if 'cloudinary.com' in frame_url:
+                    frame_path_or_url = frame_url
+                else:
+                    frame_path_or_url = frame.frame_image.path
+            except Exception as e:
+                return Response({
+                    'error': f'Failed to access frame image: {str(e)}'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # Generate 3-layer poster
             try:
@@ -709,7 +724,8 @@ class GenerateThreeLayerPosterView(APIView):
                     profile_image,
                     frame_path_or_url,
                     profile_position,
-                    output_size
+                    output_size,
+                    crop_shape
                 )
             except ValueError as e:
                 return Response({
@@ -725,12 +741,32 @@ class GenerateThreeLayerPosterView(APIView):
                 profile_position=profile_position
             )
             
-            # Save the generated image (always ContentFile now)
-            generated_image.generated_image.save(
-                f"{uuid.uuid4().hex}.png",
+            # Save the generated image to CloudinaryField
+            # Use cloudinary's uploader directly
+            import cloudinary.uploader
+            from cloudinary.models import CloudinaryResource
+            
+            # Reset buffer position
+            generated_result.seek(0)
+            
+            # Upload to Cloudinary
+            upload_result = cloudinary.uploader.upload(
                 generated_result,
-                save=False
+                folder='generated',
+                resource_type='image',
+                format='png'
             )
+            
+            # Create CloudinaryResource from upload result
+            cloudinary_resource = CloudinaryResource(
+                public_id=upload_result['public_id'],
+                format=upload_result.get('format', 'png'),
+                version=upload_result.get('version'),
+                resource_type=upload_result.get('resource_type', 'image')
+            )
+            
+            # Set the CloudinaryField value
+            generated_image.generated_image = cloudinary_resource
             generated_image.save()
             
             # Serialize and return response
