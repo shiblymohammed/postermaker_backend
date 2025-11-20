@@ -235,28 +235,10 @@ class CampaignManageView(APIView):
             }, status=status.HTTP_404_NOT_FOUND)
         
         try:
-            # Delete frame file
-            if campaign.frame_image:
-                frame_path = campaign.frame_image.path
-                if os.path.exists(frame_path):
-                    os.remove(frame_path)
-            
-            # Delete all generated images for this campaign
-            for generated_image in campaign.generated_images.all():
-                # Delete user photo
-                if generated_image.user_photo:
-                    user_photo_path = generated_image.user_photo.path
-                    if os.path.exists(user_photo_path):
-                        os.remove(user_photo_path)
-                
-                # Delete generated image
-                if generated_image.generated_image:
-                    generated_path = generated_image.generated_image.path
-                    if os.path.exists(generated_path):
-                        os.remove(generated_path)
-            
-            # Delete campaign (cascade will delete GeneratedImage records)
             campaign_name = campaign.name
+            
+            # Delete campaign - Django's cascade will handle related objects
+            # Cloudinary will automatically handle file cleanup when using CloudinaryField
             campaign.delete()
             
             return Response({
